@@ -1,0 +1,21 @@
+Data Validation Report
+========================
+
+Stage: RAW_MUTATIONS
+Status: VALID
+Statistics:
+  - invalid_protein_changes: 47,608 instances
+  - valid_protein_changes: 82,887 instances
+
+Stage: PROCESSED_PEPTIDES
+Status: VALID
+No errors detected
+
+Stage: CROSS_VALIDATION
+Status: VALID
+Statistics:
+  - total_raw_mutations: 130,495 instances
+  - total_processed: 72,269 instances
+  - valid_mutations: 82,887 instances
+  - valid_peptides: 72,269 instances
+  - processing_efficiency: 87.2%
