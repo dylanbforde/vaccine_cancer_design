@@ -115,32 +115,34 @@ def process_mutations_in_batches(
         )
 
         # Parse protein changes
-        parsed = []
-        genes_needing_cds = set()
+        # Vectorized parsing for performance
+        parsed_series = batch_df["HGVSp_Short"].apply(parse_protein_change)
+        valid_mask = parsed_series.notna()
 
-        for _, row in batch_df.iterrows():
-            result = parse_protein_change(row["HGVSp_Short"])
-            if result:
-                start_pos, end_pos, mut_type, alt = result
+        if valid_mask.any():
+            # Create parsed_df from valid results
+            # The parsed_series contains tuples: (start_pos, end_pos, mut_type, alt)
+            parsed_data = pd.DataFrame(
+                parsed_series[valid_mask].tolist(),
+                columns=["pos", "end_pos", "mut_type", "alt"],
+                index=batch_df.loc[valid_mask].index,
+            )
 
-                # Identify if we need CDS (for Frameshifts)
-                if mut_type == "Fs":
-                    genes_needing_cds.add(row["Hugo_Symbol"])
+            # Combine with original data
+            parsed_df = pd.concat(
+                [
+                    batch_df.loc[
+                        valid_mask, ["Hugo_Symbol", "HGVSp_Short", "Tumor_Sample_Barcode"]
+                    ],
+                    parsed_data,
+                ],
+                axis=1,
+            )
 
-                parsed.append(
-                    {
-                        "Hugo_Symbol": row["Hugo_Symbol"],
-                        "HGVSp_Short": row["HGVSp_Short"],
-                        "Tumor_Sample_Barcode": row["Tumor_Sample_Barcode"],
-                        "pos": start_pos,
-                        "end_pos": end_pos,
-                        "mut_type": mut_type,
-                        "alt": alt,
-                    }
-                )
-
-        if parsed:
-            parsed_df = pd.DataFrame(parsed)
+            # Identify genes needing CDS
+            genes_needing_cds = set(
+                parsed_df[parsed_df["mut_type"] == "Fs"]["Hugo_Symbol"]
+            )
 
             # Fetch protein sequences for batch
             sequences = get_sequences(parsed_df["Hugo_Symbol"].unique())
