@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 import logging
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple
 from data_processing.helper_functions import (
     generate_peptides,
     get_sequences,
@@ -9,6 +9,25 @@ from data_processing.helper_functions import (
 )
 
 logging.basicConfig(level=logging.INFO)
+
+# Pre-compile regex patterns for performance optimization
+# Stop codon (e.g., p.R30*)
+STOP_PATTERN = re.compile(r"^p\.([A-Z])(\d+)\*$")
+
+PATTERNS = [
+    # Simple substitutions (e.g., p.E678K)
+    (re.compile(r"^p\.([A-Z])(\d+)([A-Z])$"), "Sub"),
+    # Frameshifts (e.g., p.P408Afs*99)
+    (re.compile(r"^p\.([A-Z])(\d+)([A-Z])fs\*\d+$"), "Fs"),
+    # Deletions (e.g., p.Q344del, p.K2_L3del)
+    (re.compile(r"^p\.([A-Z])(\d+)(_([A-Z])(\d+))?del$"), "Del"),
+    # Duplications (e.g., p.S2107dup, p.K2_L3dup)
+    (re.compile(r"^p\.([A-Z])(\d+)(_([A-Z])(\d+))?dup$"), "Dup"),
+    # Insertions (e.g., p.K2_L3insQ)
+    (re.compile(r"^p\.([A-Z])(\d+)_([A-Z])(\d+)ins([A-Z]+)$"), "Ins"),
+    # Complex changes (e.g., p.H57_S58delinsQ)
+    (re.compile(r"^p\.([A-Z])(\d+)(_([A-Z])(\d+))?delins([A-Z]+)$"), "Delins"),
+]
 
 
 def parse_protein_change(hgvsp_short: str) -> Optional[Tuple[int, int, str, str]]:
@@ -20,28 +39,13 @@ def parse_protein_change(hgvsp_short: str) -> Optional[Tuple[int, int, str, str]
         return None
 
     # Handle stop codon (e.g., p.R30*)
-    stop_match = re.match(r"^p\.([A-Z])(\d+)\*$", hgvsp_short)
+    stop_match = STOP_PATTERN.match(hgvsp_short)
     if stop_match:
         pos = int(stop_match.group(2))
         return (pos, pos, "Stop", "*")
 
-    patterns = [
-        # Simple substitutions (e.g., p.E678K)
-        (r"^p\.([A-Z])(\d+)([A-Z])$", "Sub"),
-        # Frameshifts (e.g., p.P408Afs*99)
-        (r"^p\.([A-Z])(\d+)([A-Z])fs\*\d+$", "Fs"),
-        # Deletions (e.g., p.Q344del, p.K2_L3del)
-        (r"^p\.([A-Z])(\d+)(_([A-Z])(\d+))?del$", "Del"),
-        # Duplications (e.g., p.S2107dup, p.K2_L3dup)
-        (r"^p\.([A-Z])(\d+)(_([A-Z])(\d+))?dup$", "Dup"),
-        # Insertions (e.g., p.K2_L3insQ)
-        (r"^p\.([A-Z])(\d+)_([A-Z])(\d+)ins([A-Z]+)$", "Ins"),
-        # Complex changes (e.g., p.H57_S58delinsQ)
-        (r"^p\.([A-Z])(\d+)(_([A-Z])(\d+))?delins([A-Z]+)$", "Delins"),
-    ]
-
-    for pattern, mut_type in patterns:
-        match = re.match(pattern, hgvsp_short)
+    for pattern, mut_type in PATTERNS:
+        match = pattern.match(hgvsp_short)
         if match:
             start_pos = int(match.group(2))
 
