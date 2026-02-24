@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 import logging
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple
 from data_processing.helper_functions import (
     generate_peptides,
     get_sequences,
