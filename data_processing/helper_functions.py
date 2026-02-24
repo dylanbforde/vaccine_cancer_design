@@ -1,9 +1,8 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 import pandas as pd
 import requests
-import re
 import os
 import json
 
@@ -12,6 +11,9 @@ logging.basicConfig(level=logging.INFO)
 CACHE_FILE = "uniprot_cache.json"
 CDS_CACHE_FILE = "cds_cache.json"
 VALID_AA = set("ACDEFGHIKLMNPQRSTVWY")
+
+# In-memory cache to avoid repeated disk reads
+_MEMORY_CACHES = {}
 
 # Standard Genetic Code
 GENETIC_CODE = {
@@ -98,18 +100,30 @@ def translate_dna(dna_seq: str) -> str:
 
 def load_cache(filename: str = CACHE_FILE) -> Dict:
     """Load sequence cache"""
+    # Check in-memory cache first
+    if filename in _MEMORY_CACHES:
+        return _MEMORY_CACHES[filename]
+
     if os.path.exists(filename):
         try:
             with open(filename, "r") as f:
-                return json.load(f)
+                cache = json.load(f)
+                _MEMORY_CACHES[filename] = cache
+                return cache
         except Exception as e:
             logging.warning(f"Error loading cache {filename}: {str(e)}")
-            return {}
-    return {}
+            _MEMORY_CACHES[filename] = {}
+            return _MEMORY_CACHES[filename]
+
+    _MEMORY_CACHES[filename] = {}
+    return _MEMORY_CACHES[filename]
 
 
 def save_cache(cache: Dict, filename: str = CACHE_FILE) -> None:
     """Save sequence cache"""
+    # Update memory cache
+    _MEMORY_CACHES[filename] = cache
+    # Update disk cache
     with open(filename, "w") as f:
         json.dump(cache, f)
 
@@ -148,8 +162,11 @@ def get_uniprot_sequences_batch(genes: list, taxonomy_id: str = "9606") -> Dict:
 def get_sequences(genes: list, batch_size: int = 50) -> Dict:
     """Get protein sequences with caching"""
     cache = load_cache()
+    # Accept both tuple (from memory/initial load) and list (from JSON reload)
     missing = [
-        g for g in genes if g not in cache or not isinstance(cache.get(g), tuple)
+        g
+        for g in genes
+        if g not in cache or not isinstance(cache.get(g), (tuple, list))
     ]
 
     if missing:
