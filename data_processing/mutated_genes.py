@@ -162,7 +162,10 @@ def process_mutations_in_batches(
             parsed_df["cds_seq"] = parsed_df["Hugo_Symbol"].map(cds_sequences)
 
             # Generate peptides
-            parsed_df["peptide"] = parsed_df.apply(generate_peptides, axis=1)
+            # Optimized: using list comprehension with itertuples is significantly faster than apply(axis=1)
+            parsed_df["peptide"] = [
+                generate_peptides(row) for row in parsed_df.itertuples(index=False)
+            ]
 
             # Keep only valid results
             valid_results = parsed_df.dropna(subset=["peptide"])
