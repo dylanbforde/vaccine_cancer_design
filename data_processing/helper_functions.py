@@ -148,8 +148,11 @@ def get_uniprot_sequences_batch(genes: list, taxonomy_id: str = "9606") -> Dict:
 def get_sequences(genes: list, batch_size: int = 50) -> Dict:
     """Get protein sequences with caching"""
     cache = load_cache()
+    # Check for list or tuple because JSON deserializes tuples as lists
     missing = [
-        g for g in genes if g not in cache or not isinstance(cache.get(g), tuple)
+        g
+        for g in genes
+        if g not in cache or not isinstance(cache.get(g), (tuple, list))
     ]
 
     if missing:
@@ -164,7 +167,16 @@ def get_sequences(genes: list, batch_size: int = 50) -> Dict:
                 cache.update(batch_results)
                 save_cache(cache, CACHE_FILE)
 
-    return {gene: cache[gene] for gene in genes if gene in cache}
+    # Convert lists from JSON back to tuples for consistency
+    results = {}
+    for gene in genes:
+        if gene in cache:
+            val = cache[gene]
+            if isinstance(val, list):
+                val = tuple(val)
+            results[gene] = val
+
+    return results
 
 
 def get_cds_sequences(genes: list) -> Dict:
@@ -306,11 +318,9 @@ def generate_frameshift_sequence(
 
 def generate_peptides(row: pd.Series, peptide_length: int = 9) -> Optional[str]:
     """Generate a neopeptide sequence based on mutation data"""
-    if (
-        pd.isna(row["wildtype_seq"])
-        or not isinstance(row["wildtype_seq"], tuple)
-        or len(row["wildtype_seq"]) != 2
-    ):
+    # Check type first to avoid pd.isna() crashing on lists
+    wt_seq = row["wildtype_seq"]
+    if not isinstance(wt_seq, (tuple, list)) or len(wt_seq) != 2:
         logging.warning(f"Invalid or missing wildtype_seq for {row['Hugo_Symbol']}")
         return None
 
