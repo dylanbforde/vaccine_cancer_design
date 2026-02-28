@@ -33,14 +33,15 @@ def create_training_data(iedb_data, peptide_encoder):
     """Convert peptides to graph data format"""
     graph_data = []
 
-    for _, row in iedb_data.iterrows():
-        peptide = row["Epitope"]
+    # Optimization: use itertuples for faster row iteration
+    for row in iedb_data.itertuples(index=False):
+        peptide = getattr(row, "Epitope")
         x = peptide_encoder.encode_peptide(peptide)
         edge_index = peptide_encoder.create_edge_index(len(peptide))
         data = Data(
             x=x,
             edge_index=edge_index,
-            y=torch.tensor([row["binding"]], dtype=torch.float),
+            y=torch.tensor([getattr(row, "binding")], dtype=torch.float),
         )
         graph_data.append(data)
 
