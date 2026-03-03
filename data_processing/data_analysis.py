@@ -1,5 +1,4 @@
 import pandas as pd
-import re
 
 def analyze_protein_changes(df: pd.DataFrame):
     """Analyzes the protein changes in the given DataFrame."""
