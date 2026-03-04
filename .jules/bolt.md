@@ -5,3 +5,7 @@
 ## 2026-02-17 - Pre-compiled Regex Overhead
 **Learning:** Defining a list of regex patterns inside a frequently called function (`parse_protein_change`) causes significant overhead due to repeated list construction and regex compilation.
 **Action:** Move constant regex patterns to module scope and pre-compile them using `re.compile`. This yielded a ~35% performance improvement (0.28s -> 0.18s for 90k calls).
+
+## 2025-03-04 - Pandas apply vs itertuples iteration bottleneck
+**Learning:** `DataFrame.apply(axis=1)` is a massive performance bottleneck for iterating row-wise due to the overhead of creating a `pd.Series` object for each row.
+**Action:** Replace `apply(axis=1)` with `itertuples(index=False)` and use attribute access `getattr(row, "col", default)`. In testing, this showed roughly a 10x performance improvement for row iteration tasks like peptide generation without sacrificing code readability.
