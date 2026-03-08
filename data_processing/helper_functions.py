@@ -1,9 +1,8 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Any
 import pandas as pd
 import requests
-import re
 import os
 import json
 
@@ -304,31 +303,39 @@ def generate_frameshift_sequence(
         return None
 
 
-def generate_peptides(row: pd.Series, peptide_length: int = 9) -> Optional[str]:
+def generate_peptides(row: Any, peptide_length: int = 9) -> Optional[str]:
     """Generate a neopeptide sequence based on mutation data"""
+    # Use getattr to support both NamedTuple (from itertuples) and Series/dict
+    hugo_symbol = getattr(row, "Hugo_Symbol", getattr(row, "get", lambda k, d=None: d)("Hugo_Symbol"))
+    wildtype_seq = getattr(row, "wildtype_seq", getattr(row, "get", lambda k, d=None: d)("wildtype_seq"))
+
+    # Safely check if wildtype_seq is NaN. pd.isna throws an error on lists/tuples in some versions.
+    is_na_wt = False
+    if not isinstance(wildtype_seq, (list, tuple)):
+        is_na_wt = pd.isna(wildtype_seq)
+
     if (
-        pd.isna(row["wildtype_seq"])
-        or not isinstance(row["wildtype_seq"], tuple)
-        or len(row["wildtype_seq"]) != 2
+        is_na_wt
+        or not isinstance(wildtype_seq, tuple)
+        or len(wildtype_seq) != 2
     ):
-        logging.warning(f"Invalid or missing wildtype_seq for {row['Hugo_Symbol']}")
+        logging.warning(f"Invalid or missing wildtype_seq for {hugo_symbol}")
         return None
 
-    seq, seq_length = row["wildtype_seq"]
+    seq, seq_length = wildtype_seq
     if not seq or seq_length is None:
-        logging.warning(f"Missing sequence or length for {row['Hugo_Symbol']}")
+        logging.warning(f"Missing sequence or length for {hugo_symbol}")
         return None
 
-    pos = row["pos"]
-    # Handle end_pos if present, else default to pos
-    end_pos = row.get("end_pos", pos)
+    pos = getattr(row, "pos", getattr(row, "get", lambda k, d=None: d)("pos"))
+    end_pos = getattr(row, "end_pos", getattr(row, "get", lambda k, d=None: d)("end_pos", pos))
 
-    mut_type = row["mut_type"]
-    alt = row["alt"]
+    mut_type = getattr(row, "mut_type", getattr(row, "get", lambda k, d=None: d)("mut_type"))
+    alt = getattr(row, "alt", getattr(row, "get", lambda k, d=None: d)("alt"))
 
     if pos > seq_length or pos <= 0:
         logging.warning(
-            f"Isoform mismatch or invalid position: {row['Hugo_Symbol']} "
+            f"Isoform mismatch or invalid position: {hugo_symbol} "
             f"(UniProt length {seq_length} vs TCGA position {pos})"
         )
         return None
@@ -358,10 +365,13 @@ def generate_peptides(row: pd.Series, peptide_length: int = 9) -> Optional[str]:
             mut_idx = rel_pos - 1
 
         elif mut_type == "Fs":
-            cds_seq = row.get("cds_seq")
+            cds_seq = getattr(row, "cds_seq", getattr(row, "get", lambda k, d=None: d)("cds_seq"))
             # If we don't have CDS, we return None as per new strict biological requirement
-            if not cds_seq or pd.isna(cds_seq):
-                logging.warning(f"Missing CDS for frameshift in {row['Hugo_Symbol']}")
+            is_na_cds = False
+            if not isinstance(cds_seq, (list, tuple, str)):
+                is_na_cds = pd.isna(cds_seq)
+            if not cds_seq or is_na_cds:
+                logging.warning(f"Missing CDS for frameshift in {hugo_symbol}")
                 return None
 
             fs_seq = generate_frameshift_sequence(seq, cds_seq, pos, alt)
@@ -428,7 +438,7 @@ def generate_peptides(row: pd.Series, peptide_length: int = 9) -> Optional[str]:
     # Given the user instruction to "Avoid G padding", we will enforce exact length.
     if len(mutant_peptide) < peptide_length:
         logging.warning(
-            f"Peptide too short for {row['Hugo_Symbol']}: {len(mutant_peptide)} < {peptide_length}. Skipping."
+            f"Peptide too short for {hugo_symbol}: {len(mutant_peptide)} < {peptide_length}. Skipping."
         )
         return None
 
@@ -442,7 +452,7 @@ def generate_peptides(row: pd.Series, peptide_length: int = 9) -> Optional[str]:
     mutant_peptide = mutant_peptide[:peptide_length]  # Ensure exact length
     if not all(aa in VALID_AA for aa in mutant_peptide):
         logging.warning(
-            f"Invalid peptide generated for {row['Hugo_Symbol']}: {mutant_peptide}"
+            f"Invalid peptide generated for {hugo_symbol}: {mutant_peptide}"
         )
         return None
 
