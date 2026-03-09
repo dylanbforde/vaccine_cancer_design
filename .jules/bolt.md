@@ -5,3 +5,7 @@
 ## 2026-02-17 - Pre-compiled Regex Overhead
 **Learning:** Defining a list of regex patterns inside a frequently called function (`parse_protein_change`) causes significant overhead due to repeated list construction and regex compilation.
 **Action:** Move constant regex patterns to module scope and pre-compile them using `re.compile`. This yielded a ~35% performance improvement (0.28s -> 0.18s for 90k calls).
+
+## 2026-02-17 - Pandas Iteration overhead
+**Learning:** `apply(axis=1)` in Pandas creates a massive overhead because it initializes a new `pd.Series` object for every row in the dataset.
+**Action:** When row iteration is necessary, converting `pd.Series` typed methods to be structurally agnostic using generic `typing.Any` or `dict`, utilizing `itertuples(index=False)`, and using list comprehensions is a massive speed gain without impacting code readability.
