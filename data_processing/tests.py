@@ -1,9 +1,7 @@
 import unittest
 import pandas as pd
-from unittest.mock import mock_open, patch, MagicMock
-import logging
+from unittest.mock import patch
 
-logging.basicConfig(level=logging.INFO)
 
 from data_processing.helper_functions import (
     generate_peptides,
@@ -13,7 +11,6 @@ from data_processing.mutated_genes import (
     process_mutations_in_batches,
     filter_variants,
     parse_protein_change,
-    get_cds_sequences,
 )
 
 
