@@ -1,20 +1,16 @@
 import unittest
 import pandas as pd
-from unittest.mock import mock_open, patch, MagicMock
+from unittest.mock import patch
 import logging
 
-logging.basicConfig(level=logging.INFO)
-
-from data_processing.helper_functions import (
-    generate_peptides,
-)
-
+from data_processing.helper_functions import generate_peptides
 from data_processing.mutated_genes import (
     process_mutations_in_batches,
     filter_variants,
     parse_protein_change,
-    get_cds_sequences,
 )
+
+logging.basicConfig(level=logging.INFO)
 
 
 class TestMutationProcessing(unittest.TestCase):
@@ -174,7 +170,11 @@ class TestSequenceHandling(unittest.TestCase):
 
     def test_generate_peptides_valid(self):
         """Test valid peptide generation"""
-        result = generate_peptides(self.test_row)
+        from collections import namedtuple
+        row_dict = self.test_row.to_dict()
+        RowTuple = namedtuple('RowTuple', row_dict.keys())
+        row = RowTuple(**row_dict)
+        result = generate_peptides(row)
         self.assertIsNotNone(result, "Result should not be None for valid input")
         self.assertEqual(len(result), 9, "Should generate 9-mer peptide")
         self.assertTrue(
@@ -184,8 +184,12 @@ class TestSequenceHandling(unittest.TestCase):
 
     def test_generate_peptides_invalid_position(self):
         """Test peptide generation with invalid position"""
-        row = self.test_row.copy()
-        row["pos"] = 35  # Position beyond sequence length (30)
+        # Convert Series to namedtuple to simulate itertuples
+        row_dict = self.test_row.copy().to_dict()
+        row_dict["pos"] = 35  # Position beyond sequence length (30)
+        from collections import namedtuple
+        RowTuple = namedtuple('RowTuple', row_dict.keys())
+        row = RowTuple(**row_dict)
         result = generate_peptides(row)
         self.assertIsNone(result)
 
@@ -202,15 +206,19 @@ class TestSequenceHandling(unittest.TestCase):
         }
 
         for mut_type, alt in mutation_types.items():
-            row = self.test_row.copy()
-            row["mut_type"] = mut_type
-            row["alt"] = alt
+            row_dict = self.test_row.copy().to_dict()
+            row_dict["mut_type"] = mut_type
+            row_dict["alt"] = alt
 
             # For Del/Dup/Ins/Delins, we might want different end_pos
             if mut_type in ["Del", "Dup", "Delins"]:
-                row["end_pos"] = 5  # Single AA
+                row_dict["end_pos"] = 5  # Single AA
             if mut_type == "Ins":
-                row["end_pos"] = 6  # Insert between 5 and 6
+                row_dict["end_pos"] = 6  # Insert between 5 and 6
+
+            from collections import namedtuple
+            RowTuple = namedtuple('RowTuple', row_dict.keys())
+            row = RowTuple(**row_dict)
 
             result = generate_peptides(row)
 
