@@ -123,8 +123,8 @@ class VaccineDesignPipeline:
     def process_mutations(self, mutations_df):
         """Process mutation data and generate peptide candidates"""
         processed = []
-        for _, row in mutations_df.iterrows():
-            peptide = row["peptide"]
+        for row in mutations_df.itertuples(index=False):
+            peptide = row.peptide
             if pd.isna(peptide):
                 continue
 
@@ -136,10 +136,10 @@ class VaccineDesignPipeline:
                     edge_index=edge_index,
                     peptide=peptide,
                     mutation_info={
-                        "gene": row["Hugo_Symbol"],
-                        "sample": row["Tumor_Sample_Barcode"],
-                        "position": row["pos"],
-                        "mutation": row["alt"],
+                        "gene": row.Hugo_Symbol,
+                        "sample": row.Tumor_Sample_Barcode,
+                        "position": row.pos,
+                        "mutation": row.alt,
                     },
                 )
                 processed.append(graph_data)
