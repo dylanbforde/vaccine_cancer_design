@@ -1,9 +1,8 @@
 import unittest
 import pandas as pd
-from unittest.mock import mock_open, patch, MagicMock
+from unittest.mock import patch
 import logging
-
-logging.basicConfig(level=logging.INFO)
+import collections
 
 from data_processing.helper_functions import (
     generate_peptides,
@@ -13,8 +12,9 @@ from data_processing.mutated_genes import (
     process_mutations_in_batches,
     filter_variants,
     parse_protein_change,
-    get_cds_sequences,
 )
+
+logging.basicConfig(level=logging.INFO)
 
 
 class TestMutationProcessing(unittest.TestCase):
@@ -160,16 +160,26 @@ class TestSequenceHandling(unittest.TestCase):
     """Tests for sequence retrieval and peptide generation"""
 
     def setUp(self):
-        self.test_row = pd.Series(
-            {
-                "Hugo_Symbol": "GENE1",
-                "wildtype_seq": ("A" * 30, 30),  # Changed to valid sequence
-                "pos": 5,
-                "end_pos": 5,  # Added end_pos
-                "mut_type": "Sub",
-                "alt": "K",  # Changed to valid amino acid
-                "cds_seq": "AAA" * 50,  # Mock CDS to avoid stop codons
-            }
+        Row = collections.namedtuple(
+            "Row",
+            [
+                "Hugo_Symbol",
+                "wildtype_seq",
+                "pos",
+                "end_pos",
+                "mut_type",
+                "alt",
+                "cds_seq",
+            ],
+        )
+        self.test_row = Row(
+            Hugo_Symbol="GENE1",
+            wildtype_seq=("A" * 30, 30),  # Changed to valid sequence
+            pos=5,
+            end_pos=5,  # Added end_pos
+            mut_type="Sub",
+            alt="K",  # Changed to valid amino acid
+            cds_seq="AAA" * 50,  # Mock CDS to avoid stop codons
         )
 
     def test_generate_peptides_valid(self):
@@ -184,8 +194,7 @@ class TestSequenceHandling(unittest.TestCase):
 
     def test_generate_peptides_invalid_position(self):
         """Test peptide generation with invalid position"""
-        row = self.test_row.copy()
-        row["pos"] = 35  # Position beyond sequence length (30)
+        row = self.test_row._replace(pos=35)  # Position beyond sequence length (30)
         result = generate_peptides(row)
         self.assertIsNone(result)
 
@@ -202,15 +211,17 @@ class TestSequenceHandling(unittest.TestCase):
         }
 
         for mut_type, alt in mutation_types.items():
-            row = self.test_row.copy()
-            row["mut_type"] = mut_type
-            row["alt"] = alt
+            row_dict = self.test_row._asdict()
+            row_dict["mut_type"] = mut_type
+            row_dict["alt"] = alt
 
             # For Del/Dup/Ins/Delins, we might want different end_pos
             if mut_type in ["Del", "Dup", "Delins"]:
-                row["end_pos"] = 5  # Single AA
+                row_dict["end_pos"] = 5  # Single AA
             if mut_type == "Ins":
-                row["end_pos"] = 6  # Insert between 5 and 6
+                row_dict["end_pos"] = 6  # Insert between 5 and 6
+
+            row = collections.namedtuple("Row", row_dict.keys())(**row_dict)
 
             result = generate_peptides(row)
 
