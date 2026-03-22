@@ -1,2 +1,3 @@
 data/
-__pycache__
+__pycache__uniprot_cache.json
+cds_cache.json
