@@ -1,9 +1,8 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 import pandas as pd
 import requests
-import re
 import os
 import json
 
@@ -12,6 +11,8 @@ logging.basicConfig(level=logging.INFO)
 CACHE_FILE = "uniprot_cache.json"
 CDS_CACHE_FILE = "cds_cache.json"
 VALID_AA = set("ACDEFGHIKLMNPQRSTVWY")
+
+_MEMORY_CACHES = {}
 
 # Standard Genetic Code
 GENETIC_CODE = {
@@ -98,18 +99,27 @@ def translate_dna(dna_seq: str) -> str:
 
 def load_cache(filename: str = CACHE_FILE) -> Dict:
     """Load sequence cache"""
+    if filename in _MEMORY_CACHES:
+        return _MEMORY_CACHES[filename]
+
     if os.path.exists(filename):
         try:
             with open(filename, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                _MEMORY_CACHES[filename] = data
+                return data
         except Exception as e:
             logging.warning(f"Error loading cache {filename}: {str(e)}")
-            return {}
-    return {}
+            _MEMORY_CACHES[filename] = {}
+            return _MEMORY_CACHES[filename]
+
+    _MEMORY_CACHES[filename] = {}
+    return _MEMORY_CACHES[filename]
 
 
 def save_cache(cache: Dict, filename: str = CACHE_FILE) -> None:
     """Save sequence cache"""
+    _MEMORY_CACHES[filename] = cache
     with open(filename, "w") as f:
         json.dump(cache, f)
 
@@ -307,8 +317,7 @@ def generate_frameshift_sequence(
 def generate_peptides(row: pd.Series, peptide_length: int = 9) -> Optional[str]:
     """Generate a neopeptide sequence based on mutation data"""
     if (
-        pd.isna(row["wildtype_seq"])
-        or not isinstance(row["wildtype_seq"], tuple)
+        not isinstance(row["wildtype_seq"], tuple)
         or len(row["wildtype_seq"]) != 2
     ):
         logging.warning(f"Invalid or missing wildtype_seq for {row['Hugo_Symbol']}")
