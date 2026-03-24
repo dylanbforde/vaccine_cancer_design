@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 import logging
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple
 from data_processing.helper_functions import (
     generate_peptides,
     get_sequences,
@@ -118,8 +118,8 @@ def process_mutations_in_batches(
         )
 
         # Parse protein changes
-        # Vectorized parsing for performance
-        parsed_series = batch_df["HGVSp_Short"].apply(parse_protein_change)
+        # List comprehension parsing for performance
+        parsed_series = pd.Series([parse_protein_change(val) for val in batch_df["HGVSp_Short"]], index=batch_df.index)
         valid_mask = parsed_series.notna()
 
         if valid_mask.any():
@@ -162,7 +162,7 @@ def process_mutations_in_batches(
             parsed_df["cds_seq"] = parsed_df["Hugo_Symbol"].map(cds_sequences)
 
             # Generate peptides
-            parsed_df["peptide"] = parsed_df.apply(generate_peptides, axis=1)
+            parsed_df["peptide"] = [generate_peptides(row) for row in parsed_df.itertuples(index=False)]
 
             # Keep only valid results
             valid_results = parsed_df.dropna(subset=["peptide"])
