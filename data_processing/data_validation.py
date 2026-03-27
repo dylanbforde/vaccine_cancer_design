@@ -1,6 +1,5 @@
 import pandas as pd
 import logging
-import re
 from typing import Tuple, Dict
 from mutated_genes import parse_protein_change
 
@@ -13,7 +12,8 @@ def validate_mutations(df: pd.DataFrame) -> Tuple[bool, Dict]:
     errors = {}
     
     # Use the same parser as the main pipeline for consistency
-    valid_variants = df['HGVSp_Short'].apply(lambda x: parse_protein_change(x) is not None)
+    # ⚡ Bolt Optimization: Use list comprehension instead of .apply() for Series element-wise operations.
+    valid_variants = pd.Series([parse_protein_change(x) is not None for x in df['HGVSp_Short']])
     
     invalid_count = (~valid_variants).sum()
     valid_count = valid_variants.sum()
@@ -41,18 +41,21 @@ def validate_peptides(peptides: pd.Series) -> Tuple[bool, Dict]:
         return False, errors
     
     # Check for valid amino acids
-    invalid_aa = peptides.apply(
-        lambda x: False if pd.isna(x) else not all(aa in VALID_AA for aa in x)
-    )
+    # ⚡ Bolt Optimization: Use list comprehension instead of .apply() for Series element-wise operations.
+    invalid_aa = pd.Series([
+        False if pd.isna(x) else not all(aa in VALID_AA for aa in x)
+        for x in peptides
+    ])
     invalid_aa_count = invalid_aa.sum()
     
     if invalid_aa_count > 0:
         errors['invalid_amino_acids'] = invalid_aa_count
     
     # Check length (should be 9-mer)
-    invalid_length = peptides.apply(
-        lambda x: False if pd.isna(x) else len(x) != 9
-    )
+    invalid_length = pd.Series([
+        False if pd.isna(x) else len(x) != 9
+        for x in peptides
+    ])
     invalid_length_count = invalid_length.sum()
     
     if invalid_length_count > 0:
@@ -71,7 +74,8 @@ def cross_validate_mutations(raw_df: pd.DataFrame, processed_df: pd.DataFrame) -
     }
     
     # Count valid mutations (those we can parse)
-    valid_mutations = raw_df['HGVSp_Short'].apply(lambda x: parse_protein_change(x) is not None)
+    # ⚡ Bolt Optimization: Use list comprehension instead of .apply() for Series element-wise operations.
+    valid_mutations = pd.Series([parse_protein_change(x) is not None for x in raw_df['HGVSp_Short']])
     stats['valid_mutations'] = valid_mutations.sum()
     
     # Count valid peptides
