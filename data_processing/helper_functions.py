@@ -1,9 +1,8 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 import pandas as pd
 import requests
-import re
 import os
 import json
 
@@ -12,6 +11,8 @@ logging.basicConfig(level=logging.INFO)
 CACHE_FILE = "uniprot_cache.json"
 CDS_CACHE_FILE = "cds_cache.json"
 VALID_AA = set("ACDEFGHIKLMNPQRSTVWY")
+
+_MEMORY_CACHES: Dict[str, Dict] = {}
 
 # Standard Genetic Code
 GENETIC_CODE = {
@@ -98,10 +99,15 @@ def translate_dna(dna_seq: str) -> str:
 
 def load_cache(filename: str = CACHE_FILE) -> Dict:
     """Load sequence cache"""
+    if filename in _MEMORY_CACHES:
+        return _MEMORY_CACHES[filename]
+
     if os.path.exists(filename):
         try:
             with open(filename, "r") as f:
-                return json.load(f)
+                cache = json.load(f)
+                _MEMORY_CACHES[filename] = cache
+                return cache
         except Exception as e:
             logging.warning(f"Error loading cache {filename}: {str(e)}")
             return {}
@@ -110,6 +116,7 @@ def load_cache(filename: str = CACHE_FILE) -> Dict:
 
 def save_cache(cache: Dict, filename: str = CACHE_FILE) -> None:
     """Save sequence cache"""
+    _MEMORY_CACHES[filename] = cache
     with open(filename, "w") as f:
         json.dump(cache, f)
 
