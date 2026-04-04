@@ -1,9 +1,8 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Any
 import pandas as pd
 import requests
-import re
 import os
 import json
 
@@ -304,15 +303,29 @@ def generate_frameshift_sequence(
         return None
 
 
-def generate_peptides(row: pd.Series, peptide_length: int = 9) -> Optional[str]:
+def generate_peptides(row: Any, peptide_length: int = 9) -> Optional[str]:
     """Generate a neopeptide sequence based on mutation data"""
+    # handle both dict and Series
+    if isinstance(row, pd.Series):
+        row_dict = row.to_dict()
+    elif isinstance(row, dict):
+        row_dict = row
+    else:
+        try:
+            row_dict = row._asdict()
+        except AttributeError:
+            row_dict = dict(row)
+
+    wildtype_seq = row_dict.get("wildtype_seq")
     if (
-        pd.isna(row["wildtype_seq"])
-        or not isinstance(row["wildtype_seq"], tuple)
-        or len(row["wildtype_seq"]) != 2
+        (isinstance(wildtype_seq, float) and pd.isna(wildtype_seq))
+        or not isinstance(wildtype_seq, tuple)
+        or len(wildtype_seq) != 2
     ):
-        logging.warning(f"Invalid or missing wildtype_seq for {row['Hugo_Symbol']}")
+        logging.warning(f"Invalid or missing wildtype_seq for {row_dict.get('Hugo_Symbol', 'Unknown')}")
         return None
+
+    row = row_dict
 
     seq, seq_length = row["wildtype_seq"]
     if not seq or seq_length is None:
