@@ -40,19 +40,15 @@ def validate_peptides(peptides: pd.Series) -> Tuple[bool, Dict]:
         errors['empty_peptides'] = 0
         return False, errors
     
-    # Check for valid amino acids
-    invalid_aa = peptides.apply(
-        lambda x: False if pd.isna(x) else not all(aa in VALID_AA for aa in x)
-    )
+    # Check for valid amino acids (vectorized)
+    invalid_aa = peptides.str.contains(r'[^ACDEFGHIKLMNPQRSTVWY]', na=False)
     invalid_aa_count = invalid_aa.sum()
     
     if invalid_aa_count > 0:
         errors['invalid_amino_acids'] = invalid_aa_count
     
-    # Check length (should be 9-mer)
-    invalid_length = peptides.apply(
-        lambda x: False if pd.isna(x) else len(x) != 9
-    )
+    # Check length (should be 9-mer) (vectorized)
+    invalid_length = (peptides.str.len() != 9) & peptides.notna()
     invalid_length_count = invalid_length.sum()
     
     if invalid_length_count > 0:
