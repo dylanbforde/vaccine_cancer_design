@@ -1,9 +1,8 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 import pandas as pd
 import requests
-import re
 import os
 import json
 
