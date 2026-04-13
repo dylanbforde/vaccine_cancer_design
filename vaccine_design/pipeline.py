@@ -4,6 +4,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv, global_mean_pool
 import pandas as pd
 import logging
+from functools import lru_cache
 
 
 class PeptideEncoder:
@@ -65,6 +66,8 @@ class PeptideEncoder:
                 features.append(self.aa_features["X"])
         return torch.tensor(features, dtype=torch.float)
 
+    # ⚡ Bolt: Cache edge_index since it's only dependent on length
+    @lru_cache(maxsize=128)
     def create_edge_index(self, peptide_length):
         """Create edge connections between amino acids"""
         # Create edges between adjacent residues
@@ -123,7 +126,11 @@ class VaccineDesignPipeline:
     def process_mutations(self, mutations_df):
         """Process mutation data and generate peptide candidates"""
         processed = []
-        for _, row in mutations_df.iterrows():
+
+        # ⚡ Bolt: Vectorized row iteration using itertuples + zip instead of slow iterrows()
+        cols = mutations_df.columns
+        for row_tuple in mutations_df.itertuples(index=False, name=None):
+            row = dict(zip(cols, row_tuple))
             peptide = row["peptide"]
             if pd.isna(peptide):
                 continue
