@@ -32,15 +32,23 @@ def process_iedb_data(file_path="data/tcell_full_v3.csv"):
 def create_training_data(iedb_data, peptide_encoder):
     """Convert peptides to graph data format"""
     graph_data = []
+    cols = iedb_data.columns
+    edge_index_cache = {}
 
-    for _, row in iedb_data.iterrows():
-        peptide = row["Epitope"]
+    # Optimize performance by avoiding iterrows and caching edge indices
+    for row in iedb_data.itertuples(index=False, name=None):
+        row_dict = dict(zip(cols, row))
+        peptide = row_dict["Epitope"]
         x = peptide_encoder.encode_peptide(peptide)
-        edge_index = peptide_encoder.create_edge_index(len(peptide))
+
+        pep_len = len(peptide)
+        if pep_len not in edge_index_cache:
+            edge_index_cache[pep_len] = peptide_encoder.create_edge_index(pep_len)
+
         data = Data(
             x=x,
-            edge_index=edge_index,
-            y=torch.tensor([row["binding"]], dtype=torch.float),
+            edge_index=edge_index_cache[pep_len],
+            y=torch.tensor([row_dict["binding"]], dtype=torch.float),
         )
         graph_data.append(data)
 
