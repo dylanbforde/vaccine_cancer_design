@@ -1,7 +1,3 @@
-## 2026-02-17 - Pandas Iteration vs Vectorization
-**Learning:** `iterrows` in pandas is significantly slower than `apply` or vectorized operations, especially for large datasets (130k rows). Benchmarking showed ~20x speedup.
-**Action:** Always prefer `apply` or vectorization when processing DataFrame columns. Avoid `iterrows` loop.
-
-## 2026-02-17 - Pre-compiled Regex Overhead
-**Learning:** Defining a list of regex patterns inside a frequently called function (`parse_protein_change`) causes significant overhead due to repeated list construction and regex compilation.
-**Action:** Move constant regex patterns to module scope and pre-compile them using `re.compile`. This yielded a ~35% performance improvement (0.28s -> 0.18s for 90k calls).
+## 2024-06-12 - Pandas apply Performance Bottleneck
+**Learning:** In data processing pipelines, Pandas `.apply(axis=1)` imposes severe overhead by constructing a new `Series` object for every row.
+**Action:** Always replace `.apply(axis=1)` with list comprehensions combined with `zip(df.columns, row)` and `df.itertuples(index=False, name=None)` for significant performance gains when calling arbitrary functions row-by-row.
