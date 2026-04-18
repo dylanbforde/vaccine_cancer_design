@@ -36,7 +36,7 @@ def create_training_data(iedb_data, peptide_encoder):
     for _, row in iedb_data.iterrows():
         peptide = row["Epitope"]
         x = peptide_encoder.encode_peptide(peptide)
-        edge_index = peptide_encoder.create_edge_index(len(peptide))
+        edge_index = PeptideEncoder.create_edge_index(len(peptide))
         data = Data(
             x=x,
             edge_index=edge_index,
