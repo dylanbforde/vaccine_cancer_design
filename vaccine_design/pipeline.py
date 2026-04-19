@@ -4,6 +4,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv, global_mean_pool
 import pandas as pd
 import logging
+import functools
 
 
 class PeptideEncoder:
@@ -65,8 +66,11 @@ class PeptideEncoder:
                 features.append(self.aa_features["X"])
         return torch.tensor(features, dtype=torch.float)
 
-    def create_edge_index(self, peptide_length):
+    @staticmethod
+    @functools.lru_cache(maxsize=32)
+    def create_edge_index(peptide_length):
         """Create edge connections between amino acids"""
+        # Cache edge index tensors by peptide length to avoid redundant CPU allocations
         # Create edges between adjacent residues
         edges = []
         for i in range(peptide_length):

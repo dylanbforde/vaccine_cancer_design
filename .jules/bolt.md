@@ -5,3 +5,7 @@
 ## 2026-02-17 - Pre-compiled Regex Overhead
 **Learning:** Defining a list of regex patterns inside a frequently called function (`parse_protein_change`) causes significant overhead due to repeated list construction and regex compilation.
 **Action:** Move constant regex patterns to module scope and pre-compile them using `re.compile`. This yielded a ~35% performance improvement (0.28s -> 0.18s for 90k calls).
+
+## 2026-02-18 - Edge Index Generation Bottleneck
+**Learning:** `edge_index` tensor generation in GNN processing (e.g., `create_edge_index`) is highly repetitive since peptide lengths are usually standard (e.g., 9-mers). Recomputing it inside loops causes significant CPU overhead.
+**Action:** Use `@functools.lru_cache` and `@staticmethod` on methods that generate structural graph matrices based solely on length, bypassing redundant tensor allocations.
