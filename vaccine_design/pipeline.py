@@ -4,6 +4,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv, global_mean_pool
 import pandas as pd
 import logging
+import functools
 
 
 class PeptideEncoder:
@@ -65,7 +66,9 @@ class PeptideEncoder:
                 features.append(self.aa_features["X"])
         return torch.tensor(features, dtype=torch.float)
 
-    def create_edge_index(self, peptide_length):
+    @staticmethod
+    @functools.lru_cache(maxsize=32)
+    def create_edge_index(peptide_length):
         """Create edge connections between amino acids"""
         # Create edges between adjacent residues
         edges = []
@@ -123,8 +126,10 @@ class VaccineDesignPipeline:
     def process_mutations(self, mutations_df):
         """Process mutation data and generate peptide candidates"""
         processed = []
-        for _, row in mutations_df.iterrows():
-            peptide = row["peptide"]
+        columns = mutations_df.columns
+        for row in mutations_df.itertuples(index=False, name=None):
+            r = dict(zip(columns, row))
+            peptide = r["peptide"]
             if pd.isna(peptide):
                 continue
 
@@ -136,10 +141,10 @@ class VaccineDesignPipeline:
                     edge_index=edge_index,
                     peptide=peptide,
                     mutation_info={
-                        "gene": row["Hugo_Symbol"],
-                        "sample": row["Tumor_Sample_Barcode"],
-                        "position": row["pos"],
-                        "mutation": row["alt"],
+                        "gene": r["Hugo_Symbol"],
+                        "sample": r["Tumor_Sample_Barcode"],
+                        "position": r["pos"],
+                        "mutation": r["alt"],
                     },
                 )
                 processed.append(graph_data)
