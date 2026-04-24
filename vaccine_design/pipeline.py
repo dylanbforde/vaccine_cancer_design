@@ -4,6 +4,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv, global_mean_pool
 import pandas as pd
 import logging
+import functools
 
 
 class PeptideEncoder:
@@ -65,8 +66,10 @@ class PeptideEncoder:
                 features.append(self.aa_features["X"])
         return torch.tensor(features, dtype=torch.float)
 
-    def create_edge_index(self, peptide_length):
-        """Create edge connections between amino acids"""
+    @staticmethod
+    @functools.lru_cache(maxsize=32)
+    def create_edge_index(peptide_length):
+        """Create edge connections between amino acids. Cached since lengths are usually 9."""
         # Create edges between adjacent residues
         edges = []
         for i in range(peptide_length):
@@ -123,10 +126,14 @@ class VaccineDesignPipeline:
     def process_mutations(self, mutations_df):
         """Process mutation data and generate peptide candidates"""
         processed = []
-        for _, row in mutations_df.iterrows():
-            peptide = row["peptide"]
-            if pd.isna(peptide):
-                continue
+        # Filter NA peptides first to avoid checking each row
+        valid_df = mutations_df.dropna(subset=["peptide"])
+        columns = valid_df.columns
+
+        # Use itertuples instead of iterrows for massive performance gain
+        for row in valid_df.itertuples(index=False, name=None):
+            row_dict = dict(zip(columns, row))
+            peptide = row_dict["peptide"]
 
             try:
                 x = self.peptide_encoder.encode_peptide(peptide)
@@ -136,10 +143,10 @@ class VaccineDesignPipeline:
                     edge_index=edge_index,
                     peptide=peptide,
                     mutation_info={
-                        "gene": row["Hugo_Symbol"],
-                        "sample": row["Tumor_Sample_Barcode"],
-                        "position": row["pos"],
-                        "mutation": row["alt"],
+                        "gene": row_dict["Hugo_Symbol"],
+                        "sample": row_dict["Tumor_Sample_Barcode"],
+                        "position": row_dict["pos"],
+                        "mutation": row_dict["alt"],
                     },
                 )
                 processed.append(graph_data)
