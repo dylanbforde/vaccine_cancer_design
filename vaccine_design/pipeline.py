@@ -123,7 +123,10 @@ class VaccineDesignPipeline:
     def process_mutations(self, mutations_df):
         """Process mutation data and generate peptide candidates"""
         processed = []
-        for _, row in mutations_df.iterrows():
+        # Optimization: use itertuples instead of iterrows for much faster iteration
+        cols = mutations_df.columns
+        for row_tuple in mutations_df.itertuples(index=False, name=None):
+            row = dict(zip(cols, row_tuple))
             peptide = row["peptide"]
             if pd.isna(peptide):
                 continue

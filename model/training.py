@@ -33,7 +33,10 @@ def create_training_data(iedb_data, peptide_encoder):
     """Convert peptides to graph data format"""
     graph_data = []
 
-    for _, row in iedb_data.iterrows():
+    # Optimization: use itertuples instead of iterrows for much faster iteration
+    cols = iedb_data.columns
+    for row_tuple in iedb_data.itertuples(index=False, name=None):
+        row = dict(zip(cols, row_tuple))
         peptide = row["Epitope"]
         x = peptide_encoder.encode_peptide(peptide)
         edge_index = peptide_encoder.create_edge_index(len(peptide))
