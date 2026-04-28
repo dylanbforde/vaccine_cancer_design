@@ -1,6 +1,5 @@
 import pandas as pd
 import logging
-import re
 from typing import Tuple, Dict
 from mutated_genes import parse_protein_change
 
