@@ -1,6 +1,5 @@
 import pandas as pd
 import logging
-import re
 from typing import Tuple, Dict
 from mutated_genes import parse_protein_change
 
@@ -40,19 +39,16 @@ def validate_peptides(peptides: pd.Series) -> Tuple[bool, Dict]:
         errors['empty_peptides'] = 0
         return False, errors
     
-    # Check for valid amino acids
-    invalid_aa = peptides.apply(
-        lambda x: False if pd.isna(x) else not all(aa in VALID_AA for aa in x)
-    )
+    # Check for valid amino acids using vectorized regex
+    # VALID_AA = 'ACDEFGHIKLMNPQRSTVWY', so invalid is anything NOT in that set
+    invalid_aa = peptides.str.contains(r'[^ACDEFGHIKLMNPQRSTVWY]', na=False, regex=True)
     invalid_aa_count = invalid_aa.sum()
     
     if invalid_aa_count > 0:
         errors['invalid_amino_acids'] = invalid_aa_count
     
-    # Check length (should be 9-mer)
-    invalid_length = peptides.apply(
-        lambda x: False if pd.isna(x) else len(x) != 9
-    )
+    # Check length (should be 9-mer) using vectorized string length
+    invalid_length = (peptides.str.len() != 9) & peptides.notna()
     invalid_length_count = invalid_length.sum()
     
     if invalid_length_count > 0:
