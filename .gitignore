@@ -1,2 +1,6 @@
 data/
-__pycache__
+__pycache__/
+*.pyc
+uniprot_cache.json
+cds_cache.json
+benchmark_output.log

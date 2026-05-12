@@ -1,9 +1,8 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 import pandas as pd
 import requests
-import re
 import os
 import json
 
@@ -12,6 +11,7 @@ logging.basicConfig(level=logging.INFO)
 CACHE_FILE = "uniprot_cache.json"
 CDS_CACHE_FILE = "cds_cache.json"
 VALID_AA = set("ACDEFGHIKLMNPQRSTVWY")
+_MEMORY_CACHES: Dict[str, Dict] = {}
 
 # Standard Genetic Code
 GENETIC_CODE = {
@@ -98,18 +98,27 @@ def translate_dna(dna_seq: str) -> str:
 
 def load_cache(filename: str = CACHE_FILE) -> Dict:
     """Load sequence cache"""
+    if filename in _MEMORY_CACHES:
+        return _MEMORY_CACHES[filename]
+
     if os.path.exists(filename):
         try:
             with open(filename, "r") as f:
-                return json.load(f)
+                cache = json.load(f)
+                _MEMORY_CACHES[filename] = cache
+                return cache
         except Exception as e:
             logging.warning(f"Error loading cache {filename}: {str(e)}")
-            return {}
-    return {}
+            _MEMORY_CACHES[filename] = {}
+            return _MEMORY_CACHES[filename]
+
+    _MEMORY_CACHES[filename] = {}
+    return _MEMORY_CACHES[filename]
 
 
 def save_cache(cache: Dict, filename: str = CACHE_FILE) -> None:
     """Save sequence cache"""
+    _MEMORY_CACHES[filename] = cache
     with open(filename, "w") as f:
         json.dump(cache, f)
 
@@ -149,7 +158,9 @@ def get_sequences(genes: list, batch_size: int = 50) -> Dict:
     """Get protein sequences with caching"""
     cache = load_cache()
     missing = [
-        g for g in genes if g not in cache or not isinstance(cache.get(g), tuple)
+        g
+        for g in genes
+        if g not in cache or not isinstance(cache.get(g), (tuple, list))
     ]
 
     if missing:
@@ -164,7 +175,15 @@ def get_sequences(genes: list, batch_size: int = 50) -> Dict:
                 cache.update(batch_results)
                 save_cache(cache, CACHE_FILE)
 
-    return {gene: cache[gene] for gene in genes if gene in cache}
+    results = {}
+    for gene in genes:
+        if gene in cache:
+            value = cache[gene]
+            if isinstance(value, list):
+                value = tuple(value)
+            results[gene] = value
+
+    return results
 
 
 def get_cds_sequences(genes: list) -> Dict:
@@ -306,15 +325,12 @@ def generate_frameshift_sequence(
 
 def generate_peptides(row: pd.Series, peptide_length: int = 9) -> Optional[str]:
     """Generate a neopeptide sequence based on mutation data"""
-    if (
-        pd.isna(row["wildtype_seq"])
-        or not isinstance(row["wildtype_seq"], tuple)
-        or len(row["wildtype_seq"]) != 2
-    ):
+    wildtype_seq = row["wildtype_seq"]
+    if not isinstance(wildtype_seq, (tuple, list)) or len(wildtype_seq) != 2:
         logging.warning(f"Invalid or missing wildtype_seq for {row['Hugo_Symbol']}")
         return None
 
-    seq, seq_length = row["wildtype_seq"]
+    seq, seq_length = wildtype_seq
     if not seq or seq_length is None:
         logging.warning(f"Missing sequence or length for {row['Hugo_Symbol']}")
         return None
