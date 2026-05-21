@@ -18,6 +18,7 @@ Raw mutation data (from TCGA) is processed to generate candidate neoantigen pept
 ### 2. GNN-based MHC Binding Prediction
 A Graph Neural Network (GNN) model predicts the binding affinity between peptide sequences and MHC molecules.
 - **Graph Construction**: Peptides are represented as graphs where nodes are amino acids (with biophysical features like hydrophobicity, charge) and edges represent spatial/sequential relationships.
+- **Sinkhorn Alignment Features**: The predictor augments graph pooling with a dense log-domain Sinkhorn alignment layer over learnable peptide motifs. This adapts differentiable optimal-transport alignment ideas to the short 9-mer peptide setting used here.
 - **Training**: The model is trained on validated epitope-MHC binding data from the **IEDB** database.
 
 ### 3. Vaccine Candidate Selection

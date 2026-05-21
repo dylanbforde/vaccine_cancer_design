@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv, global_mean_pool
 import pandas as pd
 import logging
 import functools
+import math
 
 
 class PeptideEncoder:
@@ -86,7 +88,17 @@ class PeptideEncoder:
 class PeptideMHCPredictor(nn.Module):
     """GNN model for predicting peptide-MHC binding"""
 
-    def __init__(self, input_dim=3, hidden_dim=64, num_layers=2, dropout_rate=0.2):
+    def __init__(
+        self,
+        input_dim=3,
+        hidden_dim=64,
+        num_layers=2,
+        dropout_rate=0.2,
+        num_alignment_motifs=4,
+        sinkhorn_iters=8,
+        sinkhorn_epsilon=0.7,
+        peptide_length=9,
+    ):
         super().__init__()
 
         self.convs = nn.ModuleList()
@@ -98,8 +110,20 @@ class PeptideMHCPredictor(nn.Module):
         for _ in range(num_layers):
             self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
 
+        self.alignment = None
+        fc_input_dim = hidden_dim
+        if num_alignment_motifs > 0:
+            self.alignment = SinkhornPeptideAlignment(
+                hidden_dim=hidden_dim,
+                num_motifs=num_alignment_motifs,
+                motif_length=peptide_length,
+                n_iters=sinkhorn_iters,
+                epsilon=sinkhorn_epsilon,
+            )
+            fc_input_dim += hidden_dim + num_alignment_motifs
+
         self.fc = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(fc_input_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_dim, 1),
@@ -112,8 +136,100 @@ class PeptideMHCPredictor(nn.Module):
         for conv, batch_norm in zip(self.convs, self.batch_norms):
             x = torch.relu(batch_norm(conv(x, edge_index)))
 
-        x = global_mean_pool(x, data.batch)
-        return self.fc(x)
+        batch = getattr(data, "batch", None)
+        if batch is None:
+            batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+
+        pooled = global_mean_pool(x, batch)
+        if self.alignment is not None:
+            pooled = torch.cat([pooled, self.alignment(x, batch)], dim=-1)
+
+        return self.fc(pooled)
+
+
+class SinkhornPeptideAlignment(nn.Module):
+    """Dense OT alignment features for short peptide graphs.
+
+    The Sinkhorn-aligner paper targets long-context JAX/TPU attention. Here the
+    useful idea is the differentiable alignment relaxation: 9-mer peptides are
+    short enough that a dense log-domain Sinkhorn plan is the right scale.
+    """
+
+    def __init__(
+        self,
+        hidden_dim,
+        num_motifs=4,
+        motif_length=9,
+        n_iters=8,
+        epsilon=0.7,
+    ):
+        super().__init__()
+        if hidden_dim <= 0:
+            raise ValueError("hidden_dim must be positive.")
+        if num_motifs <= 0:
+            raise ValueError("num_motifs must be positive.")
+        if motif_length <= 0:
+            raise ValueError("motif_length must be positive.")
+        if n_iters <= 0:
+            raise ValueError("n_iters must be positive.")
+        if epsilon <= 0:
+            raise ValueError("epsilon must be positive.")
+
+        self.hidden_dim = int(hidden_dim)
+        self.num_motifs = int(num_motifs)
+        self.motif_length = int(motif_length)
+        self.n_iters = int(n_iters)
+        self.epsilon = float(epsilon)
+        self.motif_slots = nn.Parameter(
+            torch.randn(num_motifs, motif_length, hidden_dim) / math.sqrt(hidden_dim)
+        )
+
+    def _motifs_for_length(self, length):
+        if length <= 0:
+            raise ValueError("peptide graph must contain at least one residue.")
+        if length == self.motif_length:
+            return self.motif_slots
+
+        slots = self.motif_slots.transpose(1, 2)
+        slots = F.interpolate(
+            slots,
+            size=length,
+            mode="linear",
+            align_corners=False,
+        )
+        return slots.transpose(1, 2)
+
+    def transport_plan(self, node_features, motif_slots):
+        scores = torch.einsum("nd,mkd->mnk", node_features, motif_slots)
+        scores = scores / math.sqrt(node_features.size(-1))
+        log_plan = scores / self.epsilon
+
+        for _ in range(self.n_iters):
+            log_plan = log_plan - torch.logsumexp(log_plan, dim=-1, keepdim=True)
+            log_plan = log_plan - torch.logsumexp(log_plan, dim=-2, keepdim=True)
+
+        return torch.exp(log_plan), scores
+
+    def _align_one(self, node_features):
+        motifs = self._motifs_for_length(node_features.size(0))
+        plan, scores = self.transport_plan(node_features, motifs)
+        aligned_motifs = torch.einsum("mnk,mkd->mnd", plan, motifs)
+        aligned_nodes = node_features.unsqueeze(0) * aligned_motifs
+        motif_context = aligned_nodes.mean(dim=(0, 1))
+        motif_scores = (plan * scores).sum(dim=(-1, -2)) / node_features.size(0)
+        return torch.cat([motif_context, motif_scores], dim=-1)
+
+    def forward(self, x, batch):
+        graph_features = []
+        num_graphs = int(batch.max().item()) + 1 if batch.numel() else 0
+        for graph_idx in range(num_graphs):
+            graph_x = x[batch == graph_idx]
+            graph_features.append(self._align_one(graph_x))
+
+        if not graph_features:
+            return x.new_empty((0, self.hidden_dim + self.num_motifs))
+
+        return torch.stack(graph_features, dim=0)
 
 
 class VaccineDesignPipeline:
@@ -122,7 +238,7 @@ class VaccineDesignPipeline:
     def __init__(self, model_path):
         self.peptide_encoder = PeptideEncoder()
         self.model = PeptideMHCPredictor()  # Use default or configurable params
-        self.model.load_state_dict(torch.load(model_path))
+        self.model.load_state_dict(torch.load(model_path, map_location="cpu"))
         self.model.eval()
 
     def process_mutations(self, mutations_df):

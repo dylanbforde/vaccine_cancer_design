@@ -1,3 +1,5 @@
+import csv
+import copy
 import pandas as pd
 import torch
 from torch_geometric.loader import DataLoader
@@ -11,14 +13,49 @@ from torch_geometric.data import Data
 from vaccine_design.pipeline import PeptideEncoder, PeptideMHCPredictor
 
 
+IEDB_COLUMNS = {
+    "Epitope": ("Epitope", "Name"),
+    "Qualitative Measurement": ("Assay", "Qualitative Measurement"),
+    "MHC Restriction": ("MHC Restriction", "Name"),
+    "Assay": ("Assay", "Method"),
+}
+
+
+def _iedb_usecols(file_path):
+    with open(file_path, newline="") as handle:
+        reader = csv.reader(handle)
+        groups = next(reader)
+        fields = next(reader)
+
+    resolved = {}
+    for output_name, target in IEDB_COLUMNS.items():
+        for idx, group_field in enumerate(zip(groups, fields)):
+            if group_field == target:
+                resolved[output_name] = idx
+                break
+        else:
+            group, field = target
+            raise ValueError(f"IEDB column not found: {group!r}/{field!r}")
+
+    return resolved
+
+
 def process_iedb_data(file_path="data/tcell_full_v3.csv"):
     """Process IEDB T cell assay data for training"""
-    df = pd.read_csv(file_path)
-    data = df[["Epitope", "Qualitative Measurement", "MHC Restriction", "Assay"]].copy()
+    usecols = _iedb_usecols(file_path)
+    ordered_columns = sorted(usecols.items(), key=lambda item: item[1])
+    data = pd.read_csv(
+        file_path,
+        skiprows=2,
+        header=None,
+        usecols=[idx for _name, idx in ordered_columns],
+        names=[name for name, _idx in ordered_columns],
+        dtype=str,
+    )
 
-    # More efficient filtering
+    data["Epitope"] = data["Epitope"].fillna("").str.upper()
     data = data[
-        (data["Epitope"].str.fullmatch(r"[ACDEFGHIKLMNPQRSTVWY]{9}"))
+        (data["Epitope"].str.fullmatch(r"[ACDEFGHIKLMNPQRSTVWY]{9}", na=False))
         & (data["MHC Restriction"].str.startswith("HLA", na=False))
     ]
 
@@ -43,6 +80,8 @@ def create_training_data(iedb_data, peptide_encoder):
             x=x,
             edge_index=edge_index,
             y=torch.tensor([row["binding"]], dtype=torch.float),
+            mhc_restriction=row["MHC Restriction"],
+            assay=row["Assay"],
         )
         graph_data.append(data)
 
@@ -111,7 +150,7 @@ def train_model(train_loader, val_loader, model, epochs=50):
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_model = model.state_dict()
+            best_model = copy.deepcopy(model.state_dict())
 
     return best_model
 
